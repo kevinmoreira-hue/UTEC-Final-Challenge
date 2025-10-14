@@ -387,7 +387,7 @@ EOF
             echo "📊 Performance Test Results:"
             echo "   Total Requests: ${results}"
             echo "   Errors: ${errors}"
-            def successRateRounded = (successRate * 10).intdiv(1) / 10.0
+            def successRateRounded = ((successRate * 10) as int) / 10.0
             echo "   Success Rate: ${successRateRounded}%"
             echo "   Average Response Time: ${avgResponse}ms"
             echo "   Max Response Time: ${maxResponse}ms"
