@@ -64,107 +64,108 @@ pipeline {
       }
     }
 
-    stage('Run Performance Tests') {
-      steps {
-        sh """
-          echo "=== Starting JMeter Performance Tests ==="
-          # Clean and recreate output directory
-          rm -rf ${OUT_DIR}
-          mkdir -p ${OUT_DIR}
+stage('Run Performance Tests') {
+  steps {
+    sh """
+      echo "=== Starting JMeter Performance Tests ==="
+      # Clean and recreate output directory
+      rm -rf ${OUT_DIR}
+      mkdir -p ${OUT_DIR}
 
-          # Clean previous container if any
-          docker rm -f ${JMETER_CONTAINER_NAME} >/dev/null 2>&1 || true
+      # Clean previous container if any
+      docker rm -f ${JMETER_CONTAINER_NAME} >/dev/null 2>&1 || true
 
-          # Create a simple JMeter container and start it in background
-          # Override entrypoint to use shell and keep container alive
-          docker run -d \
-            --name ${JMETER_CONTAINER_NAME} \
-            --network=${DOCKER_NETWORK} \
-            --memory=1g \
-            --memory-swap=2g \
-            --shm-size=256m \
-            --entrypoint="" \
-            ${JMETER_IMAGE} sleep 3600
-          
-          # Create directory structure in the running container
-          docker exec ${JMETER_CONTAINER_NAME} mkdir -p /work/jmeter /work/out
-          
-          # Copy JMeter files into the container (avoids volume mount issues)
-          docker cp jmeter/. ${JMETER_CONTAINER_NAME}:/work/jmeter/
-          
-          # Clean any existing results in the container's output directory
-          docker exec ${JMETER_CONTAINER_NAME} rm -f /work/out/results.jtl || true
-          docker exec ${JMETER_CONTAINER_NAME} rm -rf /work/out/jmeter-report || true
-          
-          # Verify files are copied
-          echo "=== DEBUG: Container JMeter directory contents ==="
-          docker exec ${JMETER_CONTAINER_NAME} ls -la /work/jmeter/ || echo "Could not list files"
-          
-          # Execute JMeter inside the running container
-          set +e  # Don't fail immediately on error
-          echo "=== Running JMeter tests with 5-minute timeout ==="
-          timeout 300 docker exec ${JMETER_CONTAINER_NAME} jmeter -n \
-            -t /work/jmeter/test-plan.jmx \
-            -l /work/out/results.jtl \
-            -e -o /work/out/jmeter-report \
-            -f \
-            -Jjmeter.save.saveservice.output_format=csv \
-            -Jjmeter.save.saveservice.response_data=false \
-            -Jjmeter.save.saveservice.samplerData=false \
-            -Jjmeter.save.saveservice.responseHeaders=false
-          JMETER_EXIT_CODE=\$?
-          set -e  # Re-enable immediate failure
-          
-          if [ \$JMETER_EXIT_CODE -eq 124 ]; then
-            echo "=== JMeter test timed out after 5 minutes ==="
-            docker kill ${JMETER_CONTAINER_NAME} >/dev/null 2>&1 || true
-          fi
-          
-          echo "=== JMeter container exit code: \$JMETER_EXIT_CODE ==="
+      # Create a simple JMeter container and start it in background
+      # Override entrypoint to use shell and keep container alive
+      docker run -d \
+        --name ${JMETER_CONTAINER_NAME} \
+        --network=${DOCKER_NETWORK} \
+        --memory=1g \
+        --memory-swap=2g \
+        --shm-size=256m \
+        --entrypoint="" \
+        ${JMETER_IMAGE} sleep 3600
+      
+      # Create directory structure in the running container
+      docker exec ${JMETER_CONTAINER_NAME} mkdir -p /work/jmeter /work/out
+      
+      # Copy JMeter files into the container (avoids volume mount issues)
+      docker cp jmeter/. ${JMETER_CONTAINER_NAME}:/work/jmeter/
+      
+      # Clean any existing results in the container's output directory
+      docker exec ${JMETER_CONTAINER_NAME} rm -f /work/out/results.jtl || true
+      docker exec ${JMETER_CONTAINER_NAME} rm -rf /work/out/report || true
+      
+      # Verify files are copied
+      echo "=== DEBUG: Container JMeter directory contents ==="
+      docker exec ${JMETER_CONTAINER_NAME} ls -la /work/jmeter/ || echo "Could not list files"
+      
+      # Execute JMeter inside the running container
+      set +e  # Don't fail immediately on error
+      echo "=== Running JMeter tests with 5-minute timeout ==="
+      timeout 300 docker exec ${JMETER_CONTAINER_NAME} jmeter -n \
+        -t /work/jmeter/test-plan.jmx \
+        -l /work/out/results.jtl \
+        -e -o /work/out/report \
+        -f \
+        -Jjmeter.save.saveservice.output_format=csv \
+        -Jjmeter.save.saveservice.response_data=false \
+        -Jjmeter.save.saveservice.samplerData=false \
+        -Jjmeter.save.saveservice.responseHeaders=false
+      JMETER_EXIT_CODE=\$?
+      set -e  # Re-enable immediate failure
+      
+      if [ \$JMETER_EXIT_CODE -eq 124 ]; then
+        echo "=== JMeter test timed out after 5 minutes ==="
+        docker kill ${JMETER_CONTAINER_NAME} >/dev/null 2>&1 || true
+      fi
+      
+      echo "=== JMeter container exit code: \$JMETER_EXIT_CODE ==="
 
-          # Check container status
-          CONTAINER_STATUS=\$(docker inspect ${JMETER_CONTAINER_NAME} --format='{{.State.Status}}' 2>/dev/null || echo "not-found")
-          echo "=== Container status: \$CONTAINER_STATUS ==="
-          
-          # Try to get logs before container might be removed
-          if [ "\$CONTAINER_STATUS" != "not-found" ]; then
-            echo "=== JMeter container logs ==="
-            docker logs ${JMETER_CONTAINER_NAME} 2>/dev/null || echo "Could not retrieve logs"
-            
-            # Check what was generated in the container (if still exists)
-            echo "=== DEBUG: Container output directory contents ==="
-            docker exec ${JMETER_CONTAINER_NAME} ls -la /work/out/ 2>/dev/null || echo "No output directory in container or container not accessible"
-            
-            # Copy results back from container to Jenkins workspace
-            echo "=== Copying results from container to workspace ==="
-            docker cp ${JMETER_CONTAINER_NAME}:/work/out/. ${OUT_DIR}/ 2>/dev/null || echo "Could not copy results from container"
-            
-            # Stop and remove the container
-            docker stop ${JMETER_CONTAINER_NAME} >/dev/null 2>&1 || true
-            docker rm ${JMETER_CONTAINER_NAME} >/dev/null 2>&1 || true
-          else
-            echo "=== Container not found - may have been auto-removed ==="
-          fi
-          
-          # Verify results were generated
-          echo "=== DEBUG: Final workspace output directory contents ==="
-          ls -la ${OUT_DIR}/
-          
-          if [ -f "${OUT_DIR}/results.jtl" ]; then
-            echo "=== JMeter Test Results Generated Successfully ==="
-            echo "Total lines in results: \$(wc -l < ${OUT_DIR}/results.jtl)"
-            echo "Sample results:"
-            head -5 ${OUT_DIR}/results.jtl
-          else
-            echo "ERROR: No results.jtl file generated"
-            exit 1
-          fi
-          
-          # Exit with JMeter's exit code
-          exit \$JMETER_EXIT_CODE
-        """
-      }
-    }
+      # Check container status
+      CONTAINER_STATUS=\$(docker inspect ${JMETER_CONTAINER_NAME} --format='{{.State.Status}}' 2>/dev/null || echo "not-found")
+      echo "=== Container status: \$CONTAINER_STATUS ==="
+      
+      # Try to get logs before container might be removed
+      if [ "\$CONTAINER_STATUS" != "not-found" ]; then
+        echo "=== JMeter container logs ==="
+        docker logs ${JMETER_CONTAINER_NAME} 2>/dev/null || echo "Could not retrieve logs"
+        
+        # Check what was generated in the container (if still exists)
+        echo "=== DEBUG: Container output directory contents ==="
+        docker exec ${JMETER_CONTAINER_NAME} ls -la /work/out/ 2>/dev/null || echo "No output directory in container or container not accessible"
+        
+        # Copy results back from container to Jenkins workspace
+        echo "=== Copying results from container to workspace ==="
+        docker cp ${JMETER_CONTAINER_NAME}:/work/out/. ${OUT_DIR}/ 2>/dev/null || echo "Could not copy results from container"
+        
+        # Stop and remove the container
+        docker stop ${JMETER_CONTAINER_NAME} >/dev/null 2>&1 || true
+        docker rm ${JMETER_CONTAINER_NAME} >/dev/null 2>&1 || true
+      else
+        echo "=== Container not found - may have been auto-removed ==="
+      fi
+      
+      # Verify results were generated
+      echo "=== DEBUG: Final workspace output directory contents ==="
+      ls -la ${OUT_DIR}/
+      
+      if [ -f "${OUT_DIR}/results.jtl" ]; then
+        echo "=== JMeter Test Results Generated Successfully ==="
+        echo "Total lines in results: \$(wc -l < ${OUT_DIR}/results.jtl)"
+        echo "Sample results:"
+        head -5 ${OUT_DIR}/results.jtl
+      else
+        echo "ERROR: No results.jtl file generated"
+        exit 1
+      fi
+      
+      # Exit with JMeter's exit code
+      exit \$JMETER_EXIT_CODE
+    """
+  }
+}
+
 
     stage('Generate Performance Reports') {
       steps {
@@ -348,7 +349,7 @@ EOF
             allowMissing: false,
             alwaysLinkToLastBuild: true,
             keepAll: true,
-            reportDir: "${OUT_DIR}/jmeter-report",
+            reportDir: "${OUT_DIR}/report",
             reportFiles: 'index.html',
             reportName: 'JMeter Performance Report',
             reportTitles: 'JMeter HTML Dashboard'
