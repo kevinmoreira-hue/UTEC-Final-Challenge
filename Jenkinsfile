@@ -425,7 +425,7 @@ EOF
     }
   }
 }
-
+}
   post {
     always {
       echo "=== Performance Testing Pipeline Complete ==="
