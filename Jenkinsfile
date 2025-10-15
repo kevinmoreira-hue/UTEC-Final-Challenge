@@ -369,73 +369,62 @@ EOF
       }
     }
 
-    stage('Performance Analysis') {
-      steps {
-        script {
-          if (fileExists("${OUT_DIR}/results.jtl")) {
-            // Read and analyze results
-            def results = sh(script: "tail -n +2 ${OUT_DIR}/results.jtl | wc -l", returnStdout: true).trim().toInteger()
-            def errors = sh(script: "tail -n +2 ${OUT_DIR}/results.jtl | awk -F',' '\$8==\"false\"' | wc -l", returnStdout: true).trim().toInteger()
-            def successRate = ((results - errors) * 100) / results
-            
-            // Calculate average response time
-            def avgResponse = sh(script: "tail -n +2 ${OUT_DIR}/results.jtl | awk -F',' '{sum+=\$2; count++} END {if(count>0) print int(sum/count); else print 0}'", returnStdout: true).trim().toInteger()
-            
-            // Calculate max response time
-            def maxResponse = sh(script: "tail -n +2 ${OUT_DIR}/results.jtl | awk -F',' '{if(\$2>max) max=\$2} END {print int(max)}'", returnStdout: true).trim().toInteger()
+   stage('Performance Analysis') {
+  steps {
+    script {
+      if (fileExists("${OUT_DIR}/results.jtl")) {
+        def results = sh(script: "tail -n +2 ${OUT_DIR}/results.jtl | wc -l", returnStdout: true).trim().toInteger()
+        def errors = sh(script: "tail -n +2 ${OUT_DIR}/results.jtl | awk -F',' '\$8==\"false\"' | wc -l", returnStdout: true).trim().toInteger()
 
-            echo "📊 Performance Test Results:"
-            echo "   Total Requests: ${results}"
-            echo "   Errors: ${errors}"
-            def successRateRounded = ((successRate * 10) as int) / 10.0
-            echo "   Success Rate: ${successRateRounded}%"
-            echo "   Average Response Time: ${avgResponse}ms"
-            echo "   Max Response Time: ${maxResponse}ms"
-
-            // Performance thresholds analysis
-            def performanceIssues = []
-            
-            if (successRate < 95) {
-              performanceIssues.add("⚠️ Success rate below 95%")
-            }
-            
-            if (avgResponse > 1000) {
-              performanceIssues.add("⚠️ Average response time above 1000ms")
-            }
-            
-            if (maxResponse > 5000) {
-              performanceIssues.add("⚠️ Max response time above 5000ms")
-            }
-            
-            if (performanceIssues.size() > 0) {
-              echo "🚨 Performance Issues Detected:"
-              performanceIssues.each { issue ->
-                echo "   ${issue}"
-              }
-            }
-
-            // Set build status based on comprehensive analysis
-            if (successRate >= 95 && avgResponse <= 1000) {
-              currentBuild.result = 'SUCCESS'
-              echo "✅ Performance test PASSED - All thresholds met"
-            } else if (successRate >= 90 && avgResponse <= 2000) {
-              currentBuild.result = 'UNSTABLE'
-              echo "⚠️  Performance test UNSTABLE - Some thresholds exceeded"
-            } else {
-              currentBuild.result = 'FAILURE'
-              echo "❌ Performance test FAILED - Critical thresholds exceeded"
-            }
-
-            // Enhanced build description with more metrics
-            currentBuild.description = "Success: ${successRateRounded}% | Avg: ${avgResponse}ms | Max: ${maxResponse}ms | Requests: ${results}"
-            
-            echo "📈 Performance Plugin will provide detailed trends and comparisons"
-            echo "📊 Check 'Performance Trend' graph in project dashboard"
-          }
+        if (results == 0) {
+          echo "⚠️  No se registraron resultados (results.jtl vacío o con errores)"
+          currentBuild.result = 'FAILURE'
+          return
         }
+
+        def successRate = ((results - errors) * 100) / results
+
+        // Calcular tiempos
+        def avgResponse = sh(script: "tail -n +2 ${OUT_DIR}/results.jtl | awk -F',' '{sum+=\$2; count++} END {if(count>0) print int(sum/count); else print 0}'", returnStdout: true).trim().toInteger()
+        def maxResponse = sh(script: "tail -n +2 ${OUT_DIR}/results.jtl | awk -F',' '{if(\$2>max) max=\$2} END {print int(max)}'", returnStdout: true).trim().toInteger()
+
+        echo "📊 Resultados de la prueba de rendimiento:"
+        echo "   Total Requests: ${results}"
+        echo "   Errors: ${errors}"
+        echo "   Success Rate: ${successRate}%"
+        echo "   Average Response Time: ${avgResponse} ms"
+        echo "   Max Response Time: ${maxResponse} ms"
+
+        def performanceIssues = []
+
+        if (successRate < 95) performanceIssues.add("⚠️ Tasa de éxito por debajo del 95%")
+        if (avgResponse > 1000) performanceIssues.add("⚠️ Tiempo de respuesta promedio > 1000ms")
+        if (maxResponse > 5000) performanceIssues.add("⚠️ Tiempo de respuesta máximo > 5000ms")
+
+        if (performanceIssues.size() > 0) {
+          echo "🚨 Problemas de rendimiento detectados:"
+          performanceIssues.each { echo "   ${it}" }
+        }
+
+        if (successRate >= 95 && avgResponse <= 1000) {
+          currentBuild.result = 'SUCCESS'
+          echo "✅ Rendimiento dentro de los umbrales aceptables"
+        } else if (successRate >= 90 && avgResponse <= 2000) {
+          currentBuild.result = 'UNSTABLE'
+          echo "⚠️  Rendimiento marginal, requiere revisión"
+        } else {
+          currentBuild.result = 'FAILURE'
+          echo "❌ Rendimiento crítico, fuera de umbrales"
+        }
+
+        currentBuild.description = "Success: ${successRate}% | Avg: ${avgResponse}ms | Max: ${maxResponse}ms | Req: ${results}"
+      } else {
+        echo "⚠️  No se encontró el archivo results.jtl, la prueba no generó resultados"
+        currentBuild.result = 'FAILURE'
       }
     }
   }
+}
 
   post {
     always {
