@@ -29,10 +29,10 @@
         </elementProp>
       </ThreadGroup>
       <hashTree>
-        <CSVDataSet guiclass="TestBeanGUI" testclass="CSVDataSet" testname="Datos" enabled="true">
+        <CSVDataSet guiclass="TestBeanGUI" testclass="CSVDataSet" testname="Datos">
           <stringProp name="delimiter">,</stringProp>
           <stringProp name="fileEncoding">UTF-8</stringProp>
-          <stringProp name="filename">C:/Users/kevin/OneDrive/Escritorio/UTEC/S7-6/Performance/PROYECTO INTEGRADOR/UTEC-Final-Challenge-master/jmeter/users.csv</stringProp>
+          <stringProp name="filename"></stringProp>
           <boolProp name="ignoreFirstLine">true</boolProp>
           <boolProp name="quotedData">false</boolProp>
           <boolProp name="recycle">true</boolProp>
