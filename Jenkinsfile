@@ -345,15 +345,16 @@ EOF
           }
 
           // Publish HTML reports
-          publishHTML([
-            allowMissing: false,
-            alwaysLinkToLastBuild: true,
-            keepAll: true,
-            reportDir: "${OUT_DIR}/report",
-            reportFiles: 'index.html',
-            reportName: 'JMeter Performance Report',
-            reportTitles: 'JMeter HTML Dashboard'
-          ])
+            publishHTML([
+              allowMissing: false,
+              alwaysLinkToLastBuild: true,
+              keepAll: true,
+              reportDir: "${OUT_DIR}/report",
+              reportFiles: 'index.html',
+              reportName: 'JMeter Performance Report',
+              reportTitles: 'JMeter HTML Dashboard',
+              includes: '**/*' // 👈 importante: incluye subcarpetas (css/js/content)
+            ])
 
           publishHTML([
             allowMissing: false,
